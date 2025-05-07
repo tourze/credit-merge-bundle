@@ -1,0 +1,20 @@
+{
+    "name": "tourze/credit-merge-bundle",
+    "description": "小额流水合并模块",
+    "type": "symfony-bundle",
+    "require": {
+        "php": "^8.1",
+        "tourze/symfony-async-bundle": "0.0.*",
+        "tourze/easy-admin-attribute": "0.1.*",
+        "tourze/doctrine-track-bundle": "0.1.*"
+    },
+    "autoload": {
+        "psr-4": {
+            "CreditMergeBundle\\": "src"
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0",
+        "phpstan/phpstan": "^2.1"
+    }
+}
