@@ -12,7 +12,9 @@
     "symfony/dependency-injection": "^6.4",
     "symfony/config": "^6.4",
     "tourze/enum-extra": "~0.0.5",
-    "doctrine/orm": "^3.0"
+    "doctrine/orm": "^3.0",
+    "symfony/console": "^6.4",
+    "tourze/bundle-dependency": "0.0.*"
   },
   "autoload": {
     "psr-4": {
