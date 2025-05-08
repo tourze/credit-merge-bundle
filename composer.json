@@ -2,27 +2,28 @@
   "name": "tourze/credit-merge-bundle",
   "description": "小额流水合并模块",
   "type": "symfony-bundle",
+  "license": "MIT",
   "require": {
     "php": "^8.1",
-    "tourze/symfony-async-bundle": "0.0.*",
-    "tourze/easy-admin-attribute": "0.1.*",
-    "tourze/doctrine-track-bundle": "0.1.*",
-    "psr/log": "^3|^2|^1",
-    "symfony/http-kernel": "^6.4",
-    "symfony/dependency-injection": "^6.4",
-    "symfony/config": "^6.4",
-    "tourze/enum-extra": "~0.0.5",
     "doctrine/orm": "^3.0",
+    "psr/log": "^3|^2|^1",
+    "symfony/config": "^6.4",
     "symfony/console": "^6.4",
-    "tourze/bundle-dependency": "0.0.*"
+    "symfony/dependency-injection": "^6.4",
+    "symfony/http-kernel": "^6.4",
+    "tourze/bundle-dependency": "0.0.*",
+    "tourze/doctrine-track-bundle": "0.1.*",
+    "tourze/easy-admin-attribute": "0.1.*",
+    "tourze/enum-extra": "~0.0.5",
+    "tourze/symfony-async-bundle": "0.0.*"
+  },
+  "require-dev": {
+    "phpstan/phpstan": "^2.1",
+    "phpunit/phpunit": "^10.0"
   },
   "autoload": {
     "psr-4": {
       "CreditMergeBundle\\": "src"
     }
-  },
-  "require-dev": {
-    "phpunit/phpunit": "^10.0",
-    "phpstan/phpstan": "^2.1"
   }
 }
