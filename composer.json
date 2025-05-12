@@ -11,6 +11,7 @@
     "symfony/console": "^6.4",
     "symfony/dependency-injection": "^6.4",
     "symfony/http-kernel": "^6.4",
+    "tourze/credit-bundle": "0.0.*",
     "tourze/bundle-dependency": "0.0.*",
     "tourze/enum-extra": "~0.0.5",
     "tourze/symfony-cron-job-bundle": "0.1.*"
