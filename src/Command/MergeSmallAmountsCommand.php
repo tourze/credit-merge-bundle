@@ -154,9 +154,7 @@ class MergeSmallAmountsCommand extends Command
                     ];
                 }
 
-                if (!empty($groupTable)) {
-                    $io->table(array_keys($groupTable[0]), $groupTable);
-                }
+                $io->table(array_keys($groupTable[0]), $groupTable);
 
                 $io->text(sprintf(
                     '预计合并后可减少 %d 条记录 (%.1f%%)',
