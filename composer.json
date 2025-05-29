@@ -14,7 +14,7 @@
     "symfony/http-kernel": "^6.4",
     "tourze/bundle-dependency": "0.0.*",
     "tourze/credit-bundle": "0.0.*",
-    "tourze/enum-extra": "~0.0.5",
+    "tourze/enum-extra": "0.1.*",
     "tourze/symfony-cron-job-bundle": "0.1.*"
   },
   "require-dev": {
