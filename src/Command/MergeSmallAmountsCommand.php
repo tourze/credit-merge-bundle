@@ -200,7 +200,7 @@ class MergeSmallAmountsCommand extends Command
                     'execution_time' => $accountExecutionTime,
                 ]);
 
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 $io->error('合并过程中发生错误: ' . $e->getMessage());
                 $this->logger->error('积分合并出错', [
                     'account_id' => $account->getId(),

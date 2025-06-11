@@ -67,7 +67,7 @@ class CreditMergeService
 
             return $mergeCount;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->entityManager->getConnection()->rollBack();
 
             $this->logger->error('积分合并失败', [
