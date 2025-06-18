@@ -20,7 +20,7 @@ use Tourze\Symfony\CronJob\Attribute\AsCronTask;
  * 用于定期合并账户中的小额积分记录，减少数据库记录数量
  */
 #[AsCommand(
-    name: 'credit:merge-small-amounts',
+    name: self::NAME,
     description: '合并账户中的小额积分记录，减少记录数量',
 )]
 #[AsCronTask(expression: '0 2 * * *')] // 每天凌晨2点执行
