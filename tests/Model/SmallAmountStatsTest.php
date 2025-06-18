@@ -77,7 +77,6 @@ class SmallAmountStatsTest extends TestCase
         $this->assertSame($stats, $result, '方法应返回自身实例以支持链式调用');
         
         $groupStats = $stats->getGroupStats();
-        $this->assertIsArray($groupStats);
         $this->assertArrayHasKey('group1', $groupStats);
         $this->assertSame(5, $groupStats['group1']['count']);
         $this->assertSame(25.0, $groupStats['group1']['total']);

@@ -69,8 +69,6 @@ class TimeWindowStrategyTest extends TestCase
     public function testGetOptions(): void
     {
         $options = TimeWindowStrategy::getOptions();
-        
-        $this->assertIsArray($options);
         $this->assertCount(4, $options);
         $this->assertArrayHasKey('day', $options);
         $this->assertArrayHasKey('week', $options);
