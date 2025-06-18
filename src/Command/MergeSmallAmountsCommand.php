@@ -77,10 +77,10 @@ class MergeSmallAmountsCommand extends Command
             ['最小合并金额' => $minAmount],
             ['每批处理记录数' => $batchSize],
             ['时间窗口策略' => $strategy->value . ' - ' . $strategy->getLabel()],
-            ['模拟模式' => $dryRun ? '是' : '否']
+            ['模拟模式' => (bool)$dryRun ? '是' : '否']
         );
 
-        if ($dryRun) {
+        if ((bool)$dryRun) {
             $io->warning('当前为模拟模式，不会实际合并记录');
         }
 
@@ -93,9 +93,9 @@ class MergeSmallAmountsCommand extends Command
         ]);
 
         // 处理指定账户或所有账户
-        if ($accountId) {
+        if ($accountId !== null) {
             $account = $this->accountRepository->find($accountId);
-            if (!$account) {
+            if ($account === null) {
                 $io->error('账户不存在: ' . $accountId);
                 $this->logger->error('账户不存在', ['account_id' => $accountId]);
                 return Command::FAILURE;
@@ -163,7 +163,7 @@ class MergeSmallAmountsCommand extends Command
                 ));
             }
 
-            if ($dryRun) {
+            if ((bool)$dryRun) {
                 $io->text('模拟模式，跳过实际合并');
                 $totalProcessed += $stats->getCount();
                 continue;
@@ -222,14 +222,14 @@ class MergeSmallAmountsCommand extends Command
         $io->definitionList(
             ['处理的账户数量' => count($accounts)],
             ['处理的记录总数' => $totalProcessed],
-            ['合并的记录总数' => $dryRun ? '(模拟模式)' : $totalMerged],
+            ['合并的记录总数' => (bool)$dryRun ? '(模拟模式)' : $totalMerged],
             ['总执行时间' => sprintf('%.2f 秒', $totalExecutionTime)],
         );
 
         $this->logger->info('积分合并任务完成', [
             'accounts_count' => count($accounts),
             'records_processed' => $totalProcessed,
-            'records_merged' => $dryRun ? 0 : $totalMerged,
+            'records_merged' => (bool)$dryRun ? 0 : $totalMerged,
             'execution_time' => $totalExecutionTime,
             'dry_run' => $dryRun,
         ]);
