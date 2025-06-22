@@ -3,10 +3,9 @@
 namespace CreditMergeBundle\Service;
 
 use CreditBundle\Entity\Account;
-use CreditBundle\Entity\Transaction;
+use CreditBundle\Repository\TransactionRepository;
 use CreditMergeBundle\Enum\TimeWindowStrategy;
 use CreditMergeBundle\Model\SmallAmountStats;
-use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * 小额积分统计分析服务
@@ -15,7 +14,7 @@ use Doctrine\ORM\EntityManagerInterface;
 class SmallAmountAnalysisService
 {
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
+        private readonly TransactionRepository $transactionRepository,
         private readonly TimeWindowService $timeWindowService,
     ) {
     }
@@ -25,7 +24,7 @@ class SmallAmountAnalysisService
      */
     public function fetchSmallAmountBasicStats(Account $account, float $threshold): array 
     {
-        return $this->entityManager->getRepository(Transaction::class)
+        return $this->transactionRepository
             ->createQueryBuilder('t')
             ->select('COUNT(t.id) as count, SUM(t.balance) as total')
             ->where('t.account = :account')
@@ -41,7 +40,7 @@ class SmallAmountAnalysisService
      */
     public function fetchNoExpiryStats(Account $account, float $threshold): array 
     {
-        return $this->entityManager->getRepository(Transaction::class)
+        return $this->transactionRepository
             ->createQueryBuilder('t')
             ->select('COUNT(t.id) as count, SUM(t.balance) as total')
             ->where('t.account = :account')
@@ -74,7 +73,7 @@ class SmallAmountAnalysisService
      */
     public function findRecordsWithExpiryForStats(Account $account, float $threshold): array 
     {
-        return $this->entityManager->getRepository(Transaction::class)
+        return $this->transactionRepository
             ->createQueryBuilder('t')
             ->where('t.account = :account')
             ->andWhere('t.balance > 0 AND t.balance <= :threshold')
@@ -166,7 +165,7 @@ class SmallAmountAnalysisService
      */
     public function findNoExpiryRecords(Account $account, float $minAmount): array
     {
-        return $this->entityManager->getRepository(Transaction::class)
+        return $this->transactionRepository
             ->createQueryBuilder('t')
             ->where('t.account = :account')
             ->andWhere('t.balance > 0 AND t.balance <= :minAmount')
@@ -183,7 +182,7 @@ class SmallAmountAnalysisService
      */
     public function findExpiryRecords(Account $account, float $minAmount): array
     {
-        return $this->entityManager->getRepository(Transaction::class)
+        return $this->transactionRepository
             ->createQueryBuilder('t')
             ->where('t.account = :account')
             ->andWhere('t.balance > 0 AND t.balance <= :minAmount')

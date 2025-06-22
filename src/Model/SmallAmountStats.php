@@ -141,7 +141,7 @@ class SmallAmountStats implements \JsonSerializable
         $this->groupStats[$groupKey] = [
             'count' => $count,
             'total' => $total,
-            'earliest_expiry' => $earliestExpiry !== null ? $earliestExpiry->format('Y-m-d H:i:s') : null
+            'earliest_expiry' => $earliestExpiry?->format('Y-m-d H:i:s')
         ];
 
         return $this;

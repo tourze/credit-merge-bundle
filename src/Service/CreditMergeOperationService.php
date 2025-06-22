@@ -5,6 +5,7 @@ namespace CreditMergeBundle\Service;
 use CreditBundle\Entity\Account;
 use CreditBundle\Entity\ConsumeLog;
 use CreditBundle\Entity\Transaction;
+use CreditBundle\Repository\TransactionRepository;
 use CreditMergeBundle\Enum\TimeWindowStrategy;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -17,6 +18,7 @@ class CreditMergeOperationService
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
+        private readonly TransactionRepository $transactionRepository,
         private readonly LoggerInterface $logger,
         private readonly TimeWindowService $timeWindowService,
     ) {
@@ -71,7 +73,7 @@ class CreditMergeOperationService
      */
     private function findNoExpiryRecords(Account $account, float $minAmount): array
     {
-        return $this->entityManager->getRepository(Transaction::class)
+        return $this->transactionRepository
             ->createQueryBuilder('t')
             ->where('t.account = :account')
             ->andWhere('t.balance > 0 AND t.balance <= :minAmount')
@@ -88,7 +90,7 @@ class CreditMergeOperationService
      */
     private function findRecordsWithExpiry(Account $account, float $minAmount): array
     {
-        $recordsWithExpiry = $this->entityManager->getRepository(Transaction::class)
+        $recordsWithExpiry = $this->transactionRepository
             ->createQueryBuilder('t')
             ->where('t.account = :account')
             ->andWhere('t.balance > 0 AND t.balance <= :minAmount')
