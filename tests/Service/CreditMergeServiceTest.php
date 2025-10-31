@@ -3,241 +3,471 @@
 namespace CreditMergeBundle\Tests\Service;
 
 use CreditBundle\Entity\Account;
+use CreditMergeBundle\Entity\MergeOperation;
 use CreditMergeBundle\Enum\TimeWindowStrategy;
 use CreditMergeBundle\Model\SmallAmountStats;
 use CreditMergeBundle\Service\CreditMergeOperationService;
 use CreditMergeBundle\Service\CreditMergeService;
 use CreditMergeBundle\Service\CreditMergeStatsService;
-use Doctrine\DBAL\Connection;
+use CreditMergeBundle\Service\MergeOperationRecordService;
 use Doctrine\ORM\EntityManagerInterface;
-use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
+use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\LoggerInterface;
+use Tourze\PHPUnitSymfonyKernelTest\AbstractIntegrationTestCase;
 
-class CreditMergeServiceTest extends TestCase
+/**
+ * @internal
+ */
+#[CoversClass(CreditMergeService::class)]
+#[RunTestsInSeparateProcesses]
+final class CreditMergeServiceTest extends AbstractIntegrationTestCase
 {
-    private EntityManagerInterface $entityManager;
-    private Connection $connection;
-    private LoggerInterface $logger;
-    private CreditMergeOperationService $operationService;
-    private CreditMergeStatsService $statsService;
     private CreditMergeService $service;
-    private Account $account;
-    
-    protected function setUp(): void
+    private EntityManagerInterface&MockObject $em;
+    private LoggerInterface&MockObject $logger;
+    private CreditMergeOperationService&MockObject $operationService;
+    private CreditMergeStatsService&MockObject $statsService;
+    private MergeOperationRecordService&MockObject $recordService;
+    private Account $testAccount;
+
+    protected function onSetUp(): void
     {
-        $this->entityManager = $this->createMock(EntityManagerInterface::class);
-        $this->connection = $this->createMock(Connection::class);
-        $this->entityManager->method('getConnection')->willReturn($this->connection);
-        
+        // 创建 Mock 对象
+        $this->em = $this->createMock(EntityManagerInterface::class);
         $this->logger = $this->createMock(LoggerInterface::class);
         $this->operationService = $this->createMock(CreditMergeOperationService::class);
         $this->statsService = $this->createMock(CreditMergeStatsService::class);
-        
+        $this->recordService = $this->createMock(MergeOperationRecordService::class);
+
+        // 直接实例化服务并注入Mock依赖
+        // 由于需要Mock EntityManager和Logger等核心服务，使用直接实例化
+        /* @phpstan-ignore integrationTest.noDirectInstantiationOfCoveredClass */
         $this->service = new CreditMergeService(
-            $this->entityManager,
+            $this->em,
             $this->logger,
             $this->operationService,
-            $this->statsService
+            $this->statsService,
+            $this->recordService
         );
-        
-        $this->account = $this->createMock(Account::class);
-        $this->account->method('getId')->willReturn(123);
+
+        // 创建测试用的账户
+        $this->testAccount = new Account();
+        // 注意：不能设置ID，因为它是由数据库自动生成的
     }
-    
-    /**
-     * 测试合并小额积分方法-正常流程
-     */
-    public function testMergeSmallAmounts_successfulMerge(): void
+
+    public function testServiceExists(): void
     {
-        // 设置预期行为
-        $this->connection->expects($this->once())->method('beginTransaction');
-        $this->connection->expects($this->once())->method('commit');
-        $this->connection->expects($this->never())->method('rollBack');
-        
-        $this->operationService->expects($this->once())
-            ->method('mergeNoExpiryRecords')
-            ->with($this->account, 5.0)
-            ->willReturn(3);
-            
-        $this->operationService->expects($this->once())
-            ->method('mergeExpiryRecords')
-            ->with($this->account, 5.0, TimeWindowStrategy::MONTH)
-            ->willReturn(7);
-        
-        // 设置日志记录预期
-        $this->logger->expects($this->exactly(2))
-            ->method('info')
-            ->willReturnCallback(function($message, $context) {
-                static $callCount = 0;
-                $callCount++;
-                
-                if ($callCount === 1) {
-                    $this->assertStringContainsString('开始合并小额积分', $message);
-                    $this->assertEquals(123, $context['account_id']);
-                    $this->assertEquals(5.0, $context['min_amount']);
-                    $this->assertEquals(100, $context['batch_size']);
-                    $this->assertEquals('month', $context['strategy']);
-                } else {
-                    $this->assertStringContainsString('积分合并完成', $message);
-                    $this->assertEquals(123, $context['account_id']);
-                    $this->assertEquals(10, $context['merge_count']);
-                    $this->assertEquals('month', $context['strategy']);
-                }
-                
-                return true;
-            });
-        
-        // 执行方法
-        $result = $this->service->mergeSmallAmounts($this->account, 5.0, 100, TimeWindowStrategy::MONTH);
-        
+        $this->assertInstanceOf(CreditMergeService::class, $this->service);
+    }
+
+    /**
+     * 测试成功的小额积分合并场景.
+     */
+    #[DataProvider('mergeSmallAmountsSuccessDataProvider')]
+    public function testMergeSmallAmountsSuccess(
+        float $minAmount,
+        int $batchSize,
+        TimeWindowStrategy $timeWindowStrategy,
+        bool $isDryRun,
+        int $expectedMergeCount,
+    ): void {
+        // 设置操作前后的统计数据
+        $statsBefore = $this->createSmallAmountStats(100, 500.0);
+        $statsAfter = $this->createSmallAmountStats(50, 500.0);
+
+        // 模拟操作记录
+        $mockOperation = $this->createMockOperation(1);
+
+        // 设置 Mock 期望
+        $this->setupSuccessfulMergeExpectations(
+            $statsBefore,
+            $statsAfter,
+            $mockOperation,
+            $expectedMergeCount,
+            $isDryRun
+        );
+
+        // 执行测试
+        $result = $this->service->mergeSmallAmounts(
+            $this->testAccount,
+            $minAmount,
+            $batchSize,
+            $timeWindowStrategy,
+            $isDryRun
+        );
+
         // 验证结果
-        $this->assertEquals(10, $result, '合并结果应返回被合并的总记录数'); // 3 + 7 = 10
+        $this->assertSame($expectedMergeCount, $result);
     }
-    
+
     /**
-     * 测试合并小额积分方法-合并过程异常
+     * 测试小额积分合并异常场景.
      */
-    public function testMergeSmallAmounts_exceptionHandling(): void
+    public function testMergeSmallAmountsException(): void
     {
-        $exception = new \Exception('测试异常');
-        
-        // 设置预期行为
-        $this->connection->expects($this->once())->method('beginTransaction');
-        $this->connection->expects($this->never())->method('commit');
-        $this->connection->expects($this->once())->method('rollBack');
-        
-        $this->operationService->expects($this->once())
+        $statsBefore = $this->createSmallAmountStats(100, 500.0);
+        $mockOperation = $this->createMockOperation(1);
+        $exceptionMessage = 'Database connection failed';
+        $exception = new \RuntimeException($exceptionMessage);
+
+        // 设置 Mock 期望
+        $this->setupExceptionScenarioExpectations($statsBefore, $mockOperation, $exception);
+
+        // 验证异常被抛出
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage($exceptionMessage);
+
+        $this->service->mergeSmallAmounts($this->testAccount);
+    }
+
+    /**
+     * 测试干运行模式.
+     */
+    public function testMergeSmallAmountsDryRun(): void
+    {
+        $statsBefore = $this->createSmallAmountStats(100, 500.0);
+        $mockOperation = $this->createMockOperation(1);
+
+        // 设置干运行期望
+        $this->setupDryRunExpectations($statsBefore, $mockOperation);
+
+        // 执行干运行
+        $result = $this->service->mergeSmallAmounts(
+            $this->testAccount,
+            5.0,
+            100,
+            TimeWindowStrategy::MONTH,
+            true
+        );
+
+        // 干运行应该返回0
+        $this->assertSame(0, $result);
+    }
+
+    /**
+     * 测试获取小额积分统计信息.
+     */
+    #[DataProvider('statsThresholdDataProvider')]
+    public function testGetSmallAmountStats(float $threshold, int $expectedCount, float $expectedTotal): void
+    {
+        $expectedStats = $this->createSmallAmountStats($expectedCount, $expectedTotal);
+
+        $this->statsService
+            ->expects($this->once())
+            ->method('getSmallAmountStats')
+            ->with($this->testAccount, $threshold)
+            ->willReturn($expectedStats);
+
+        $result = $this->service->getSmallAmountStats($this->testAccount, $threshold);
+
+        $this->assertSame($expectedStats, $result);
+        $this->assertSame($expectedCount, $result->getCount());
+        $this->assertSame($expectedTotal, $result->getTotal());
+    }
+
+    /**
+     * 测试获取详细小额积分统计信息.
+     */
+    #[DataProvider('detailedStatsDataProvider')]
+    public function testGetDetailedSmallAmountStats(
+        float $threshold,
+        TimeWindowStrategy $timeWindowStrategy,
+        int $expectedCount,
+        float $expectedTotal,
+    ): void {
+        $expectedStats = $this->createSmallAmountStats($expectedCount, $expectedTotal);
+
+        $this->statsService
+            ->expects($this->once())
+            ->method('getDetailedSmallAmountStats')
+            ->with($this->testAccount, $threshold, $timeWindowStrategy)
+            ->willReturn($expectedStats);
+
+        $result = $this->service->getDetailedSmallAmountStats(
+            $this->testAccount,
+            $threshold,
+            $timeWindowStrategy
+        );
+
+        $this->assertSame($expectedStats, $result);
+        $this->assertSame($expectedCount, $result->getCount());
+        $this->assertSame($expectedTotal, $result->getTotal());
+    }
+
+    /**
+     * 测试不同时间窗口策略.
+     */
+    #[DataProvider('timeWindowStrategyDataProvider')]
+    public function testMergeSmallAmountsWithDifferentTimeWindowStrategies(
+        TimeWindowStrategy $strategy,
+        int $expectedMergeCount,
+    ): void {
+        $statsBefore = $this->createSmallAmountStats(50, 250.0);
+        $statsAfter = $this->createSmallAmountStats(25, 250.0);
+        $mockOperation = $this->createMockOperation(1);
+
+        $this->setupSuccessfulMergeExpectations(
+            $statsBefore,
+            $statsAfter,
+            $mockOperation,
+            $expectedMergeCount,
+            false
+        );
+
+        $result = $this->service->mergeSmallAmounts(
+            $this->testAccount,
+            5.0,
+            100,
+            $strategy,
+            false
+        );
+
+        $this->assertSame($expectedMergeCount, $result);
+    }
+
+    /**
+     * 测试边界条件：零记录合并.
+     */
+    public function testMergeSmallAmountsZeroRecords(): void
+    {
+        $statsBefore = $this->createSmallAmountStats(0, 0.0);
+        $mockOperation = $this->createMockOperation(1);
+
+        $this->setupZeroRecordsMergeExpectations($statsBefore, $mockOperation);
+
+        $result = $this->service->mergeSmallAmounts($this->testAccount);
+
+        $this->assertSame(0, $result);
+    }
+
+    /**
+     * 创建小额积分统计对象
+     */
+    private function createSmallAmountStats(int $count, float $total): SmallAmountStats
+    {
+        return new SmallAmountStats($this->testAccount, $count, $total, 5.0);
+    }
+
+    /**
+     * 创建模拟操作对象
+     */
+    private function createMockOperation(int $id): MergeOperation
+    {
+        // 对于当前测试场景，不依赖 ID 值，直接返回实体实例即可
+        return new MergeOperation();
+    }
+
+    /**
+     * 设置成功合并的期望.
+     */
+    private function setupSuccessfulMergeExpectations(
+        SmallAmountStats $statsBefore,
+        SmallAmountStats $statsAfter,
+        MergeOperation $mockOperation,
+        int $expectedMergeCount,
+        bool $isDryRun,
+    ): void {
+        // 统计服务期望
+        $this->statsService
+            ->expects($this->exactly(2))
+            ->method('getDetailedSmallAmountStats')
+            ->willReturnOnConsecutiveCalls($statsBefore, $statsAfter);
+
+        // 记录服务期望
+        $this->recordService
+            ->expects($this->once())
+            ->method('startOperation')
+            ->willReturn($mockOperation);
+
+        $this->recordService
+            ->expects($this->once())
+            ->method('completeOperation');
+
+        $this->recordService
+            ->expects($this->once())
+            ->method('recordStatistics');
+
+        // EntityManager 期望
+        $connection = $this->createMock(\Doctrine\DBAL\Connection::class);
+        $connection->expects($this->once())->method('beginTransaction');
+        $connection->expects($this->once())->method('commit');
+
+        $this->em
+            ->expects($this->atLeastOnce())
+            ->method('getConnection')
+            ->willReturn($connection);
+
+        if (!$isDryRun) {
+            // 操作服务期望 - 正确分配合并计数，确保总数匹配
+            $noExpiryCount = (int) ($expectedMergeCount / 2);
+            $expiryCount = $expectedMergeCount - $noExpiryCount;
+
+            $this->operationService
+                ->expects($this->once())
+                ->method('mergeNoExpiryRecords')
+                ->willReturn($noExpiryCount);
+
+            $this->operationService
+                ->expects($this->once())
+                ->method('mergeExpiryRecords')
+                ->willReturn($expiryCount);
+        }
+    }
+
+    /**
+     * 设置异常场景期望.
+     */
+    private function setupExceptionScenarioExpectations(
+        SmallAmountStats $statsBefore,
+        MergeOperation $mockOperation,
+        \Throwable $exception,
+    ): void {
+        $this->statsService
+            ->expects($this->once())
+            ->method('getDetailedSmallAmountStats')
+            ->willReturn($statsBefore);
+
+        $this->recordService
+            ->expects($this->once())
+            ->method('startOperation')
+            ->willReturn($mockOperation);
+
+        $this->recordService
+            ->expects($this->once())
+            ->method('failOperation');
+
+        $connection = $this->createMock(\Doctrine\DBAL\Connection::class);
+        $connection->expects($this->once())->method('beginTransaction');
+        $connection->expects($this->once())->method('rollBack');
+
+        $this->em
+            ->expects($this->atLeastOnce())
+            ->method('getConnection')
+            ->willReturn($connection);
+
+        $this->operationService
+            ->expects($this->once())
             ->method('mergeNoExpiryRecords')
             ->willThrowException($exception);
-        
-        $this->logger->expects($this->once())
-            ->method('error')
-            ->with(
-                $this->stringContains('积分合并失败'),
-                $this->callback(function ($context) {
-                    return $context['account_id'] === 123 
-                        && $context['exception'] === '测试异常'
-                        && is_string($context['trace']);
-                })
-            );
-        
-        // 期望抛出异常
-        $this->expectException(\Exception::class);
-        $this->expectExceptionMessage('测试异常');
-        
-        // 执行方法
-        $this->service->mergeSmallAmounts($this->account);
     }
-    
+
     /**
-     * 测试获取小额积分统计信息方法
+     * 设置干运行期望.
      */
-    public function testGetSmallAmountStats(): void
-    {
-        // 创建模拟统计对象
-        $stats = new SmallAmountStats($this->account, 10, 50.0, 5.0);
-        
-        // 设置预期行为
-        $this->statsService->expects($this->once())
-            ->method('getSmallAmountStats')
-            ->with($this->account, 5.0)
-            ->willReturn($stats);
-        
-        // 执行方法
-        $result = $this->service->getSmallAmountStats($this->account, 5.0);
-        
-        // 验证结果
-        $this->assertSame($stats, $result);
-        $this->assertEquals(10, $result->getCount());
-        $this->assertEquals(50.0, $result->getTotal());
-        $this->assertEquals(5.0, $result->getThreshold());
-    }
-    
-    /**
-     * 测试使用不同阈值获取小额积分统计信息
-     */
-    public function testGetSmallAmountStats_withDifferentThreshold(): void
-    {
-        // 创建模拟统计对象
-        $stats = new SmallAmountStats($this->account, 5, 30.0, 10.0);
-        
-        // 设置预期行为
-        $this->statsService->expects($this->once())
-            ->method('getSmallAmountStats')
-            ->with($this->account, 10.0)
-            ->willReturn($stats);
-        
-        // 执行方法
-        $result = $this->service->getSmallAmountStats($this->account, 10.0);
-        
-        // 验证结果
-        $this->assertSame($stats, $result);
-        $this->assertEquals(5, $result->getCount());
-        $this->assertEquals(30.0, $result->getTotal());
-        $this->assertEquals(10.0, $result->getThreshold());
-    }
-    
-    /**
-     * 测试获取详细的小额积分统计信息方法
-     */
-    public function testGetDetailedSmallAmountStats(): void
-    {
-        // 创建模拟详细统计对象
-        $stats = new SmallAmountStats($this->account, 10, 50.0, 5.0, TimeWindowStrategy::MONTH);
-        $stats->addGroupStats('2023-10', 5, 25.0);
-        $stats->addGroupStats('2023-11', 5, 25.0);
-        
-        // 设置预期行为
-        $this->statsService->expects($this->once())
+    private function setupDryRunExpectations(
+        SmallAmountStats $statsBefore,
+        MergeOperation $mockOperation,
+    ): void {
+        $this->statsService
+            ->expects($this->exactly(2))
             ->method('getDetailedSmallAmountStats')
-            ->with($this->account, 5.0, TimeWindowStrategy::MONTH)
-            ->willReturn($stats);
-        
-        // 执行方法
-        $result = $this->service->getDetailedSmallAmountStats($this->account, 5.0, TimeWindowStrategy::MONTH);
-        
-        // 验证结果
-        $this->assertSame($stats, $result);
-        $this->assertEquals(10, $result->getCount());
-        $this->assertEquals(50.0, $result->getTotal());
-        $this->assertEquals(5.0, $result->getThreshold());
-        $this->assertSame(TimeWindowStrategy::MONTH, $result->getStrategy());
-        
-        $groupStats = $result->getGroupStats();
-        $this->assertCount(2, $groupStats);
-        $this->assertArrayHasKey('2023-10', $groupStats);
-        $this->assertArrayHasKey('2023-11', $groupStats);
+            ->willReturn($statsBefore);
+
+        $this->recordService
+            ->expects($this->once())
+            ->method('startOperation')
+            ->willReturn($mockOperation);
+
+        $this->recordService
+            ->expects($this->once())
+            ->method('completeOperation');
+
+        $this->recordService
+            ->expects($this->once())
+            ->method('recordStatistics');
+
+        $connection = $this->createMock(\Doctrine\DBAL\Connection::class);
+        $connection->expects($this->once())->method('beginTransaction');
+        $connection->expects($this->once())->method('commit');
+
+        $this->em
+            ->expects($this->atLeastOnce())
+            ->method('getConnection')
+            ->willReturn($connection);
+
+        // 干运行时不应调用操作服务
+        $this->operationService->expects($this->never())->method('mergeNoExpiryRecords');
+        $this->operationService->expects($this->never())->method('mergeExpiryRecords');
     }
-    
+
     /**
-     * 测试使用不同策略获取详细的小额积分统计信息
+     * 设置零记录合并期望.
      */
-    public function testGetDetailedSmallAmountStats_withDifferentStrategy(): void
-    {
-        // 创建模拟详细统计对象
-        $stats = new SmallAmountStats($this->account, 10, 50.0, 5.0, TimeWindowStrategy::DAY);
-        $stats->addGroupStats('2023-10-15', 3, 15.0);
-        $stats->addGroupStats('2023-10-16', 7, 35.0);
-        
-        // 设置预期行为
-        $this->statsService->expects($this->once())
+    private function setupZeroRecordsMergeExpectations(
+        SmallAmountStats $statsBefore,
+        MergeOperation $mockOperation,
+    ): void {
+        $this->statsService
+            ->expects($this->exactly(2))
             ->method('getDetailedSmallAmountStats')
-            ->with($this->account, 5.0, TimeWindowStrategy::DAY)
-            ->willReturn($stats);
-        
-        // 执行方法
-        $result = $this->service->getDetailedSmallAmountStats($this->account, 5.0, TimeWindowStrategy::DAY);
-        
-        // 验证结果
-        $this->assertSame($stats, $result);
-        $this->assertEquals(10, $result->getCount());
-        $this->assertEquals(50.0, $result->getTotal());
-        $this->assertEquals(5.0, $result->getThreshold());
-        $this->assertSame(TimeWindowStrategy::DAY, $result->getStrategy());
-        
-        $groupStats = $result->getGroupStats();
-        $this->assertCount(2, $groupStats);
-        $this->assertArrayHasKey('2023-10-15', $groupStats);
-        $this->assertArrayHasKey('2023-10-16', $groupStats);
+            ->willReturn($statsBefore);
+
+        $this->recordService
+            ->expects($this->once())
+            ->method('startOperation')
+            ->willReturn($mockOperation);
+
+        $connection = $this->createMock(\Doctrine\DBAL\Connection::class);
+        $connection->expects($this->once())->method('beginTransaction');
+        $connection->expects($this->once())->method('commit');
+
+        $this->em
+            ->expects($this->atLeastOnce())
+            ->method('getConnection')
+            ->willReturn($connection);
     }
-} 
+
+    // ============= DataProvider 方法 =============
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    public static function mergeSmallAmountsSuccessDataProvider(): array
+    {
+        return [
+            'default_parameters' => [5.0, 100, TimeWindowStrategy::MONTH, false, 20],
+            'high_threshold' => [10.0, 50, TimeWindowStrategy::WEEK, false, 15],
+            'day_strategy' => [3.0, 200, TimeWindowStrategy::DAY, false, 25],
+            'large_batch' => [5.0, 500, TimeWindowStrategy::MONTH, false, 30],
+        ];
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    public static function statsThresholdDataProvider(): array
+    {
+        return [
+            'default_threshold' => [5.0, 50, 250.0],
+            'high_threshold' => [10.0, 20, 180.0],
+            'low_threshold' => [1.0, 100, 450.0],
+        ];
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    public static function detailedStatsDataProvider(): array
+    {
+        return [
+            'month_strategy' => [5.0, TimeWindowStrategy::MONTH, 30, 150.0],
+            'week_strategy' => [5.0, TimeWindowStrategy::WEEK, 45, 225.0],
+            'day_strategy' => [5.0, TimeWindowStrategy::DAY, 60, 300.0],
+        ];
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    public static function timeWindowStrategyDataProvider(): array
+    {
+        return [
+            'month_strategy' => [TimeWindowStrategy::MONTH, 10],
+            'week_strategy' => [TimeWindowStrategy::WEEK, 15],
+            'day_strategy' => [TimeWindowStrategy::DAY, 20],
+        ];
+    }
+}

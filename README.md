@@ -3,21 +3,65 @@
 [English](README.md) | [中文](README.zh-CN.md)
 
 [![Latest Version](https://img.shields.io/packagist/v/tourze/credit-merge-bundle.svg?style=flat-square)](https://packagist.org/packages/tourze/credit-merge-bundle)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/tourze/php-monorepo/packages%2Fcredit-merge-bundle%2F.github%2Fworkflows%2Fphpunit.yml?branch=main&style=flat-square)](https://github.com/tourze/php-monorepo/actions/workflows/packages/credit-merge-bundle/.github/workflows/phpunit.yml)
+[![PHP Version](https://img.shields.io/packagist/php-v/tourze/credit-merge-bundle.svg?style=flat-square)](https://packagist.org/packages/tourze/credit-merge-bundle)
+[![License](https://img.shields.io/packagist/l/tourze/credit-merge-bundle.svg?style=flat-square)](https://packagist.org/packages/tourze/credit-merge-bundle)
 [![Total Downloads](https://img.shields.io/packagist/dt/tourze/credit-merge-bundle.svg?style=flat-square)](https://packagist.org/packages/tourze/credit-merge-bundle)
+[![Code Coverage](https://img.shields.io/codecov/c/github/tourze/php-monorepo?style=flat-square)](https://codecov.io/gh/tourze/php-monorepo)
 
-A Symfony bundle for merging small credit transactions to optimize storage and processing. This helps in reducing the number of individual credit records, especially for accounts with frequent, low-value transactions.
+[![Build Status](https://img.shields.io/github/actions/workflow/status/tourze/php-monorepo/phpunit.yml?branch=main&style=flat-square)](https://github.com/tourze/php-monorepo/actions)
+
+A Symfony bundle for merging small credit transactions to optimize storage and processing.
+This helps in reducing the number of individual credit records, especially for accounts
+with frequent, low-value transactions.
+
+## Table of Contents
+
+- [Features](#features)
+- [Dependencies](#dependencies)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Quick Start](#quick-start)
+- [Advanced Usage](#advanced-usage)
+  - [Custom Time Window Strategies](#custom-time-window-strategies)
+  - [Merge Potential Analysis](#merge-potential-analysis)
+  - [Automatic Merging Integration](#automatic-merging-integration)
+  - [Batch Processing with Custom Logic](#batch-processing-with-custom-logic)
+- [Workflow](#workflow)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
 - Merges small credit transactions for specified accounts.
 - Supports merging records with no expiration date.
-- Supports merging records with expiration dates based on configurable time window strategies (e.g., `daily`, `weekly`, `monthly`, `yearly`).
-- Provides a console command (`credit:merge-small-amounts`) for manual or scheduled merging operations.
-- Optionally triggers automatic merging of small amounts before large credit consumptions (configurable via environment variables).
-- Offers detailed statistics on small credit amounts, including potential record reduction and merge efficiency.
-- Configurable parameters such as minimum amount for merging, batch processing size, and time window strategies.
+- Supports merging records with expiration dates based on configurable time window strategies
+  (e.g., `daily`, `weekly`, `monthly`, `yearly`).
+- Provides a console command (`credit:merge-small-amounts`) for manual or scheduled
+  merging operations.
+- Optionally triggers automatic merging of small amounts before large credit consumptions
+  (configurable via environment variables).
+- Offers detailed statistics on small credit amounts, including potential record reduction
+  and merge efficiency.
+- Configurable parameters such as minimum amount for merging, batch processing size,
+  and time window strategies.
 - Dry-run mode available for the console command to preview changes without actual execution.
+
+## Dependencies
+
+This bundle requires the following dependencies:
+
+- **PHP**: ^8.1 (with readonly properties support)
+- **Symfony**: ^7.3
+- **Doctrine ORM**: ^3.0
+- **Doctrine DBAL**: ^4.0
+- **tourze/credit-bundle**: 0.0.*
+- **tourze/enum-extra**: 0.1.*
+- **tourze/symfony-cron-job-bundle**: 0.1.*
+
+### Optional Dependencies
+
+- **PHPStan**: ^2.1 (for development)
+- **PHPUnit**: ^11.5 (for testing)
 
 ## Installation
 
@@ -27,7 +71,8 @@ Require the bundle using Composer:
 composer require tourze/credit-merge-bundle
 ```
 
-Ensure the bundle is registered in your `config/bundles.php` if not done automatically by Symfony Flex:
+Ensure the bundle is registered in your `config/bundles.php` if not done automatically
+by Symfony Flex:
 
 ```php
 // config/bundles.php
@@ -117,7 +162,8 @@ Merge small amounts for all accounts, using default settings (min amount 5.0, mo
 php bin/console credit:merge-small-amounts
 ```
 
-Merge small amounts for a specific account (ID 123), with amounts less than 2.0, using a yearly strategy, in dry-run mode:
+Merge small amounts for a specific account (ID 123), with amounts less than 2.0,
+using a yearly strategy, in dry-run mode:
 
 ```bash
 php bin/console credit:merge-small-amounts 123 --min-amount=2.0 --strategy=year --dry-run
@@ -129,9 +175,73 @@ To see all available options:
 php bin/console credit:merge-small-amounts --help
 ```
 
+## Advanced Usage
+
+### Custom Time Window Strategies
+
+You can implement custom time window strategies by extending the `TimeWindowStrategy` enum:
+
+```php
+use CreditMergeBundle\Enum\TimeWindowStrategy;
+
+// Available strategies:
+$strategies = TimeWindowStrategy::getOptions();
+// Returns: ['day' => 'Daily', 'week' => 'Weekly', 'month' => 'Monthly', 'year' => 'Yearly']
+```
+
+### Merge Potential Analysis
+
+Before performing actual merges, you can analyze the potential impact:
+
+```php
+use CreditMergeBundle\Service\MergePotentialAnalysisService;
+
+/** @var MergePotentialAnalysisService $analysisService */
+$potentialMerges = $analysisService->analyzeAccount($account, $minAmount, $strategy);
+
+foreach ($potentialMerges as $windowKey => $groupData) {
+    echo "Group {$windowKey}: {$groupData['count']} records, " .
+         "total: {$groupData['total']}\n";
+}
+```
+
+### Automatic Merging Integration
+
+The bundle can automatically trigger merges before large consumptions:
+
+```php
+use CreditMergeBundle\Service\CreditSmallAmountsMergeService;
+
+/** @var CreditSmallAmountsMergeService $autoMergeService */
+
+// This will check if auto-merge conditions are met and perform merge if needed
+$autoMergeService->handlePreConsumption($account, $consumptionAmount);
+```
+
+### Batch Processing with Custom Logic
+
+For custom batch processing scenarios:
+
+```php
+use CreditMergeBundle\Service\CreditMergeStatsService;
+
+/** @var CreditMergeStatsService $statsService */
+
+// Get detailed statistics before merging
+$stats = $statsService->getSmallAmountStats($account, $minAmount);
+
+if ($stats->getCount() > 1000) {
+    // Handle large batches differently
+    $batchSize = 50; // Smaller batches for large datasets
+} else {
+    $batchSize = 100; // Default batch size
+}
+```
+
 ## Workflow
 
-For a detailed understanding of the merging logic and component interactions, please refer to the [WORKFLOW.md](WORKFLOW.md) document.
+For a detailed understanding of the merging logic and component interactions,
+please refer to the [WORKFLOW.md](WORKFLOW.md) document.
 
 ## Contributing
 

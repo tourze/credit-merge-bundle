@@ -13,46 +13,61 @@ use CreditMergeBundle\Model\SmallAmountStats;
 class CreditMergeStatsService
 {
     public function __construct(
-        private readonly SmallAmountAnalysisService $smallAmountAnalysisService,
-        private readonly MergePotentialAnalysisService $mergePotentialAnalysisService,
+        private SmallAmountAnalysisService $smallAmountAnalysisService,
+        private MergePotentialAnalysisService $mergePotentialAnalysisService,
     ) {
     }
 
     /**
-     * 获取账户小额积分统计信息
+     * 获取账户小额积分统计信息.
      *
-     * @param Account $account 账户
-     * @param float $threshold 小额阈值
+     * @param Account $account   账户
+     * @param float   $threshold 小额阈值
+     *
      * @return SmallAmountStats 包含小额积分统计信息的对象
      */
     public function getSmallAmountStats(Account $account, float $threshold = 5.0): SmallAmountStats
     {
         $stats = $this->smallAmountAnalysisService->fetchSmallAmountBasicStats($account, $threshold);
 
+        $count = isset($stats['count']) && is_numeric($stats['count']) ? (int) $stats['count'] : 0;
+        $total = isset($stats['total']) && is_numeric($stats['total']) ? (float) $stats['total'] : 0.0;
+
         return new SmallAmountStats(
             $account,
-            (int)($stats['count'] ?? 0),
-            (float)($stats['total'] ?? 0),
+            $count,
+            $total,
             $threshold
         );
     }
 
     /**
-     * 获取带分组统计的小额积分详情
+     * 获取带分组统计的小额积分详情.
      *
-     * @param Account $account 账户
-     * @param float $threshold 小额阈值
+     * @param Account            $account            账户
+     * @param float              $threshold          小额阈值
      * @param TimeWindowStrategy $timeWindowStrategy 时间窗口策略
+     *
      * @return SmallAmountStats 包含详细统计信息的对象
      */
     public function getDetailedSmallAmountStats(
         Account $account,
         float $threshold = 5.0,
-        TimeWindowStrategy $timeWindowStrategy = TimeWindowStrategy::MONTH
+        TimeWindowStrategy $timeWindowStrategy = TimeWindowStrategy::MONTH,
     ): SmallAmountStats {
         // 1. 获取基础统计信息
-        $stats = $this->getSmallAmountStats($account, $threshold);
-        $stats->setStrategy($timeWindowStrategy);
+        $basicStats = $this->smallAmountAnalysisService->fetchSmallAmountBasicStats($account, $threshold);
+
+        $count = isset($basicStats['count']) && is_numeric($basicStats['count']) ? (int) $basicStats['count'] : 0;
+        $total = isset($basicStats['total']) && is_numeric($basicStats['total']) ? (float) $basicStats['total'] : 0.0;
+
+        $stats = new SmallAmountStats(
+            $account,
+            $count,
+            $total,
+            $threshold,
+            $timeWindowStrategy
+        );
 
         // 如果没有记录，直接返回
         if ($stats->getCount() <= 0) {
@@ -69,7 +84,10 @@ class CreditMergeStatsService
     }
 
     /**
-     * 获取账户的小额积分分布情况
+     * 获取账户的小额积分分布情况.
+     */
+    /**
+     * @return array<string, mixed>
      */
     public function getSmallAmountDistribution(Account $account, float $minAmount): array
     {

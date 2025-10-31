@@ -8,3 +8,13 @@ services:
     resource: '../../Command/'
   CreditMergeBundle\Service\:
     resource: '../../Service/'
+  CreditMergeBundle\Controller\:
+    resource: '../../Controller/'
+    tags: ['controller.service_arguments']
+  CreditMergeBundle\Repository\:
+    resource: '../../Repository/'
+    
+  # 明确注册新服务以确保正确的依赖注入
+  CreditMergeBundle\Service\MergeOperationRecordService:
+    arguments:
+      $logger: '@monolog.logger.credit_merge_record'

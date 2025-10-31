@@ -4,29 +4,34 @@ namespace CreditMergeBundle\Service;
 
 use CreditBundle\Entity\Account;
 use CreditBundle\Repository\TransactionRepository;
+use Monolog\Attribute\WithMonologChannel;
 use Psr\Log\LoggerInterface;
 
 /**
  * 小额积分合并服务
- * 负责处理扣减积分前的小额积分合并逻辑
+ * 负责处理扣减积分前的小额积分合并逻辑.
  */
+#[WithMonologChannel(channel: 'credit_merge')]
 class CreditSmallAmountsMergeService
 {
     public function __construct(
-        private readonly TransactionRepository $transactionRepository,
-        private readonly LoggerInterface $logger,
+        private TransactionRepository $transactionRepository,
+        private LoggerInterface $logger,
     ) {
     }
 
     /**
-     * 检查并在需要时合并小额积分
+     * 检查并在需要时合并小额积分.
      */
     public function checkAndMergeIfNeeded(Account $account, float $costAmount): void
     {
-        $autoMergeEnabled = !isset($_ENV['CREDIT_AUTO_MERGE_ENABLED']) || (bool)$_ENV['CREDIT_AUTO_MERGE_ENABLED'];
-        $autoMergeThreshold = isset($_ENV['CREDIT_AUTO_MERGE_THRESHOLD']) ? (int)$_ENV['CREDIT_AUTO_MERGE_THRESHOLD'] : 100;
-        $autoMergeMinAmount = isset($_ENV['CREDIT_AUTO_MERGE_MIN_AMOUNT']) ? (float)$_ENV['CREDIT_AUTO_MERGE_MIN_AMOUNT'] : 100.0;
-        $timeWindowStrategy = $_ENV['CREDIT_TIME_WINDOW_STRATEGY'] ?? 'monthly';
+        $autoMergeEnabled = !isset($_ENV['CREDIT_AUTO_MERGE_ENABLED']) || (bool) $_ENV['CREDIT_AUTO_MERGE_ENABLED'];
+        $autoMergeThreshold = isset($_ENV['CREDIT_AUTO_MERGE_THRESHOLD']) && is_numeric($_ENV['CREDIT_AUTO_MERGE_THRESHOLD'])
+            ? (int) $_ENV['CREDIT_AUTO_MERGE_THRESHOLD'] : 100;
+        $autoMergeMinAmount = isset($_ENV['CREDIT_AUTO_MERGE_MIN_AMOUNT']) && is_numeric($_ENV['CREDIT_AUTO_MERGE_MIN_AMOUNT'])
+            ? (float) $_ENV['CREDIT_AUTO_MERGE_MIN_AMOUNT'] : 100.0;
+        $timeWindowStrategy = isset($_ENV['CREDIT_TIME_WINDOW_STRATEGY']) && is_string($_ENV['CREDIT_TIME_WINDOW_STRATEGY'])
+            ? $_ENV['CREDIT_TIME_WINDOW_STRATEGY'] : 'monthly';
 
         if (!$this->shouldMerge($autoMergeEnabled, $costAmount, $autoMergeMinAmount)) {
             return;
@@ -47,7 +52,7 @@ class CreditSmallAmountsMergeService
     }
 
     /**
-     * 判断是否需要合并小额积分
+     * 判断是否需要合并小额积分.
      */
     private function shouldMerge(bool $autoMergeEnabled, float $costAmount, float $autoMergeMinAmount): bool
     {
@@ -55,11 +60,13 @@ class CreditSmallAmountsMergeService
     }
 
     /**
-     * 执行小额积分合并
+     * 执行小额积分合并.
      */
     private function executeMergeSmallAmounts(Account $account, string $timeWindowStrategy): int
     {
-        $minAmountToMerge = isset($_ENV['CREDIT_MIN_AMOUNT_TO_MERGE']) ? (float)$_ENV['CREDIT_MIN_AMOUNT_TO_MERGE'] : 5.0;
+        $minAmountToMerge = isset($_ENV['CREDIT_MIN_AMOUNT_TO_MERGE']) && is_numeric($_ENV['CREDIT_MIN_AMOUNT_TO_MERGE'])
+            ? (float) $_ENV['CREDIT_MIN_AMOUNT_TO_MERGE'] : 5.0;
+
         // TODO: 需要在 TransactionRepository 中实现 mergeSmallAmounts 方法
         // return $this->transactionRepository->mergeSmallAmounts(
         //     $account,
@@ -71,7 +78,7 @@ class CreditSmallAmountsMergeService
     }
 
     /**
-     * 记录合并开始日志
+     * 记录合并开始日志.
      */
     private function logMergeStart(Account $account, float $costAmount, int $recordCount, int $threshold, string $strategy): void
     {
@@ -80,19 +87,19 @@ class CreditSmallAmountsMergeService
             'costAmount' => $costAmount,
             'recordCount' => $recordCount,
             'threshold' => $threshold,
-            'strategy' => $strategy
+            'strategy' => $strategy,
         ]);
     }
 
     /**
-     * 记录合并完成日志
+     * 记录合并完成日志.
      */
     private function logMergeComplete(Account $account, int $mergeCount, string $strategy): void
     {
         $this->logger->info('小额积分合并完成', [
             'account' => $account->getId(),
             'mergeCount' => $mergeCount,
-            'strategy' => $strategy
+            'strategy' => $strategy,
         ]);
     }
 }

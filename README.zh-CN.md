@@ -3,10 +3,44 @@
 [English](README.md) | [中文](README.zh-CN.md)
 
 [![Latest Version](https://img.shields.io/packagist/v/tourze/credit-merge-bundle.svg?style=flat-square)](https://packagist.org/packages/tourze/credit-merge-bundle)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/tourze/php-monorepo/packages%2Fcredit-merge-bundle%2F.github%2Fworkflows%2Fphpunit.yml?branch=main&style=flat-square)](https://github.com/tourze/php-monorepo/actions/workflows/packages/credit-merge-bundle/.github/workflows/phpunit.yml)
+[![PHP Version](https://img.shields.io/packagist/php-v/tourze/credit-merge-bundle.svg?style=flat-square)](https://packagist.org/packages/tourze/credit-merge-bundle)
+[![License](https://img.shields.io/packagist/l/tourze/credit-merge-bundle.svg?style=flat-square)](https://packagist.org/packages/tourze/credit-merge-bundle)
 [![Total Downloads](https://img.shields.io/packagist/dt/tourze/credit-merge-bundle.svg?style=flat-square)](https://packagist.org/packages/tourze/credit-merge-bundle)
+[![Code Coverage](https://img.shields.io/codecov/c/github/tourze/php-monorepo?style=flat-square)](https://codecov.io/gh/tourze/php-monorepo)
 
-一个用于合并小额信用积分交易的 Symfony Bundle，旨在优化存储和处理。这有助于减少单个信用积分记录的数量，特别是对于那些拥有频繁、低价值交易的账户。
+[![Build Status](https://img.shields.io/github/actions/workflow/status/tourze/php-monorepo/phpunit.yml?branch=main&style=flat-square)](https://github.com/tourze/php-monorepo/actions)
+
+一个用于合并小额信用积分交易的 Symfony Bundle，旨在优化存储和处理。
+这有助于减少单个信用积分记录的数量，特别是对于那些拥有频繁、低价值交易的账户。
+
+## 目录
+
+- [系统要求](#系统要求)
+- [测试与开发工具](#测试与开发工具)
+- [功能特性](#功能特性)
+- [安装说明](#安装说明)
+- [配置说明](#配置说明)
+- [快速开始](#快速开始)
+- [高级用法](#高级用法)
+  - [自定义时间窗口策略](#自定义时间窗口策略)
+  - [合并潜力分析](#合并潜力分析)
+  - [自动合并集成](#自动合并集成)
+  - [自定义逻辑的批量处理](#自定义逻辑的批量处理)
+- [工作流程](#工作流程)
+- [贡献指南](#贡献指南)
+- [版权和许可](#版权和许可)
+
+## 系统要求
+
+- **PHP**: ^8.1 (支持 readonly 属性)
+- **Symfony**: ^7.3
+- **Doctrine ORM**: ^3.0
+- **Doctrine DBAL**: ^4.0
+
+## 测试与开发工具
+
+- **PHPStan**: ^2.1 (代码静态分析)
+- **PHPUnit**: ^11.5 (单元测试和集成测试)
 
 ## 功能特性
 
@@ -127,6 +161,69 @@ php bin/console credit:merge-small-amounts 123 --min-amount=2.0 --strategy=year 
 
 ```bash
 php bin/console credit:merge-small-amounts --help
+```
+
+## 高级用法
+
+### 自定义时间窗口策略
+
+您可以通过扩展 `TimeWindowStrategy` 枚举来实现自定义时间窗口策略：
+
+```php
+use CreditMergeBundle\Enum\TimeWindowStrategy;
+
+// 可用策略:
+$strategies = TimeWindowStrategy::getOptions();
+// 返回: ['day' => 'Daily', 'week' => 'Weekly', 'month' => 'Monthly', 'year' => 'Yearly']
+```
+
+### 合并潜力分析
+
+在执行实际合并之前，您可以分析潜在影响：
+
+```php
+use CreditMergeBundle\Service\MergePotentialAnalysisService;
+
+/** @var MergePotentialAnalysisService $analysisService */
+$potentialMerges = $analysisService->analyzeAccount($account, $minAmount, $strategy);
+
+foreach ($potentialMerges as $windowKey => $groupData) {
+    echo "组 {$windowKey}: {$groupData['count']} 条记录, " .
+         "总计: {$groupData['total']}\n";
+}
+```
+
+### 自动合并集成
+
+该 Bundle 可以在大额消费前自动触发合并：
+
+```php
+use CreditMergeBundle\Service\CreditSmallAmountsMergeService;
+
+/** @var CreditSmallAmountsMergeService $autoMergeService */
+
+// 这将检查是否满足自动合并条件，如果需要则执行合并
+$autoMergeService->handlePreConsumption($account, $consumptionAmount);
+```
+
+### 自定义逻辑的批量处理
+
+对于自定义批量处理场景：
+
+```php
+use CreditMergeBundle\Service\CreditMergeStatsService;
+
+/** @var CreditMergeStatsService $statsService */
+
+// 在合并前获取详细统计信息
+$stats = $statsService->getSmallAmountStats($account, $minAmount);
+
+if ($stats->getCount() > 1000) {
+    // 对大型数据集采用不同处理方式
+    $batchSize = 50; // 大型数据集使用较小批次
+} else {
+    $batchSize = 100; // 默认批次大小
+}
 ```
 
 ## 工作流程

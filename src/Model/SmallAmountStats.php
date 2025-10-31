@@ -6,65 +6,33 @@ use CreditBundle\Entity\Account;
 use CreditMergeBundle\Enum\TimeWindowStrategy;
 
 /**
- * 小额积分统计信息模型
+ * 小额积分统计信息模型.
  */
 class SmallAmountStats implements \JsonSerializable
 {
     /**
-     * @var Account 账户
-     */
-    private Account $account;
-
-    /**
-     * @var int 小额积分记录数量
-     */
-    private int $count;
-
-    /**
-     * @var float 小额积分总额
-     */
-    private float $total;
-
-    /**
-     * @var float 小额积分阈值
-     */
-    private float $threshold;
-
-    /**
-     * @var ?TimeWindowStrategy 时间窗口策略
-     */
-    private ?TimeWindowStrategy $strategy = null;
-
-    /**
-     * @var array 分组统计信息
+     * @var array<string, array<string, mixed>> 分组统计信息
      */
     private array $groupStats = [];
 
     /**
-     * @param Account $account 账户
-     * @param int $count 记录数量
-     * @param float $total 积分总额
-     * @param float $threshold 积分阈值
-     * @param ?TimeWindowStrategy $strategy 时间窗口策略
+     * @param Account             $account   账户
+     * @param int                 $count     记录数量
+     * @param float               $total     积分总额
+     * @param float               $threshold 积分阈值
+     * @param ?TimeWindowStrategy $strategy  时间窗口策略
      */
     public function __construct(
-        Account $account,
-        int $count,
-        float $total,
-        float $threshold,
-        ?TimeWindowStrategy $strategy = null
+        private readonly Account $account,
+        private readonly int $count,
+        private readonly float $total,
+        private readonly float $threshold,
+        private readonly ?TimeWindowStrategy $strategy = null,
     ) {
-        $this->account = $account;
-        $this->count = $count;
-        $this->total = $total;
-        $this->threshold = $threshold;
-        $this->strategy = $strategy;
     }
 
     /**
-     * 获取账户
-     *
-     * @return Account
+     * 获取账户.
      */
     public function getAccount(): Account
     {
@@ -72,9 +40,7 @@ class SmallAmountStats implements \JsonSerializable
     }
 
     /**
-     * 获取小额记录数量
-     *
-     * @return int
+     * 获取小额记录数量.
      */
     public function getCount(): int
     {
@@ -82,9 +48,7 @@ class SmallAmountStats implements \JsonSerializable
     }
 
     /**
-     * 获取小额积分总额
-     *
-     * @return float
+     * 获取小额积分总额.
      */
     public function getTotal(): float
     {
@@ -93,8 +57,6 @@ class SmallAmountStats implements \JsonSerializable
 
     /**
      * 获取小额积分阈值
-     *
-     * @return float
      */
     public function getThreshold(): float
     {
@@ -102,9 +64,7 @@ class SmallAmountStats implements \JsonSerializable
     }
 
     /**
-     * 获取时间窗口策略
-     *
-     * @return TimeWindowStrategy|null
+     * 获取时间窗口策略.
      */
     public function getStrategy(): ?TimeWindowStrategy
     {
@@ -112,45 +72,33 @@ class SmallAmountStats implements \JsonSerializable
     }
 
     /**
-     * 设置时间窗口策略
+     * 添加分组统计信息.
      *
-     * @param TimeWindowStrategy $strategy 策略枚举
-     * @return self
-     */
-    public function setStrategy(TimeWindowStrategy $strategy): self
-    {
-        $this->strategy = $strategy;
-        return $this;
-    }
-
-    /**
-     * 添加分组统计信息
-     *
-     * @param string $groupKey 分组键
-     * @param int $count 该组记录数
-     * @param float $total 该组积分总额
+     * @param string                  $groupKey       分组键
+     * @param int                     $count          该组记录数
+     * @param float                   $total          该组积分总额
      * @param \DateTimeInterface|null $earliestExpiry 该组最早过期时间
-     * @return self
      */
     public function addGroupStats(
         string $groupKey,
         int $count,
         float $total,
-        ?\DateTimeInterface $earliestExpiry = null
+        ?\DateTimeInterface $earliestExpiry = null,
     ): self {
         $this->groupStats[$groupKey] = [
             'count' => $count,
             'total' => $total,
-            'earliest_expiry' => $earliestExpiry?->format('Y-m-d H:i:s')
+            'earliest_expiry' => $earliestExpiry?->format('Y-m-d H:i:s'),
         ];
 
         return $this;
     }
 
     /**
-     * 获取分组统计信息
-     *
-     * @return array
+     * 获取分组统计信息.
+     */
+    /**
+     * @return array<string, array<string, mixed>>
      */
     public function getGroupStats(): array
     {
@@ -158,9 +106,7 @@ class SmallAmountStats implements \JsonSerializable
     }
 
     /**
-     * 判断是否有可合并的积分
-     *
-     * @return bool
+     * 判断是否有可合并的积分.
      */
     public function hasMergeableRecords(): bool
     {
@@ -168,9 +114,7 @@ class SmallAmountStats implements \JsonSerializable
     }
 
     /**
-     * 计算合并后可能减少的记录数
-     *
-     * @return int
+     * 计算合并后可能减少的记录数.
      */
     public function getPotentialRecordReduction(): int
     {
@@ -178,7 +122,7 @@ class SmallAmountStats implements \JsonSerializable
             return 0;
         }
 
-        if (empty($this->groupStats)) {
+        if ([] === $this->groupStats) {
             // 如果没有分组统计，假设所有记录合并为一条
             return $this->count - 1;
         }
@@ -186,8 +130,9 @@ class SmallAmountStats implements \JsonSerializable
         // 计算分组后的减少数量（每组减少的记录数量 = 记录数 - 1）
         $reduction = 0;
         foreach ($this->groupStats as $stats) {
-            if ($stats['count'] > 1) {
-                $reduction += $stats['count'] - 1;
+            $count = isset($stats['count']) && \is_int($stats['count']) ? $stats['count'] : 0;
+            if ($count > 1) {
+                $reduction += $count - 1;
             }
         }
 
@@ -195,7 +140,7 @@ class SmallAmountStats implements \JsonSerializable
     }
 
     /**
-     * 获取合并效率（减少的记录数占原记录数的百分比）
+     * 获取合并效率（减少的记录数占原记录数的百分比）.
      *
      * @return float 百分比（0-100）
      */
@@ -205,17 +150,15 @@ class SmallAmountStats implements \JsonSerializable
             return 0.0;
         }
 
-        return (float)($this->getPotentialRecordReduction() / $this->count * 100);
+        return (float) ($this->getPotentialRecordReduction() / $this->count * 100);
     }
 
     /**
-     * 平均每条记录的金额
-     *
-     * @return float
+     * 平均每条记录的金额.
      */
     public function getAverageAmount(): float
     {
-        if ($this->count === 0) {
+        if (0 === $this->count) {
             return 0.0;
         }
 
@@ -223,9 +166,10 @@ class SmallAmountStats implements \JsonSerializable
     }
 
     /**
-     * 转换为JSON时的数据
-     *
-     * @return array
+     * 转换为JSON时的数据.
+     */
+    /**
+     * @return array<string, mixed>
      */
     public function jsonSerialize(): array
     {
@@ -245,10 +189,6 @@ class SmallAmountStats implements \JsonSerializable
 
     /**
      * 创建一个空的统计对象
-     *
-     * @param Account $account
-     * @param float $threshold
-     * @return self
      */
     public static function createEmpty(Account $account, float $threshold = 5.0): self
     {

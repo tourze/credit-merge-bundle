@@ -2,16 +2,20 @@
 
 namespace CreditMergeBundle;
 
+use CreditBundle\CreditBundle;
+use Doctrine\Bundle\DoctrineBundle\DoctrineBundle;
 use Symfony\Component\HttpKernel\Bundle\Bundle;
 use Tourze\BundleDependency\BundleDependencyInterface;
+use Tourze\Symfony\CronJob\CronJobBundle;
 
 class CreditMergeBundle extends Bundle implements BundleDependencyInterface
 {
     public static function getBundleDependencies(): array
     {
         return [
-            \CreditBundle\CreditBundle::class => ['all' => true],
-            \Tourze\Symfony\CronJob\CronJobBundle::class => ['all' => true],
+            DoctrineBundle::class => ['all' => true],
+            CreditBundle::class => ['all' => true],
+            CronJobBundle::class => ['all' => true],
         ];
     }
 }

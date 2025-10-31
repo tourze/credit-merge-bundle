@@ -3,34 +3,17 @@
 namespace CreditMergeBundle\Tests\Enum;
 
 use CreditMergeBundle\Enum\TimeWindowStrategy;
-use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\CoversClass;
+use Tourze\PHPUnitEnum\AbstractEnumTestCase;
 
-class TimeWindowStrategyTest extends TestCase
+/**
+ * @internal
+ */
+#[CoversClass(TimeWindowStrategy::class)]
+final class TimeWindowStrategyTest extends AbstractEnumTestCase
 {
     /**
-     * 测试枚举值是否正确
-     */
-    public function testEnumValues(): void
-    {
-        $this->assertSame('day', TimeWindowStrategy::DAY->value);
-        $this->assertSame('week', TimeWindowStrategy::WEEK->value);
-        $this->assertSame('month', TimeWindowStrategy::MONTH->value);
-        $this->assertSame('all', TimeWindowStrategy::ALL->value);
-    }
-
-    /**
-     * 测试获取标签功能
-     */
-    public function testGetLabel(): void
-    {
-        $this->assertSame('按天', TimeWindowStrategy::DAY->getLabel());
-        $this->assertSame('按周', TimeWindowStrategy::WEEK->getLabel());
-        $this->assertSame('按月', TimeWindowStrategy::MONTH->getLabel());
-        $this->assertSame('全部合并', TimeWindowStrategy::ALL->getLabel());
-    }
-
-    /**
-     * 测试获取日期格式功能
+     * 测试获取日期格式功能.
      */
     public function testGetDateFormat(): void
     {
@@ -43,7 +26,7 @@ class TimeWindowStrategyTest extends TestCase
     /**
      * 测试从字符串创建枚举实例-正确的输入值
      */
-    public function testFromString_validValues(): void
+    public function testFromStringValidValues(): void
     {
         $this->assertSame(TimeWindowStrategy::DAY, TimeWindowStrategy::fromString('day'));
         $this->assertSame(TimeWindowStrategy::DAY, TimeWindowStrategy::fromString('daily'));
@@ -57,14 +40,14 @@ class TimeWindowStrategyTest extends TestCase
     /**
      * 测试从字符串创建枚举实例-无效的输入值
      */
-    public function testFromString_invalidValue(): void
+    public function testFromStringInvalidValue(): void
     {
         $this->assertNull(TimeWindowStrategy::fromString('invalid_value'));
         $this->assertNull(TimeWindowStrategy::fromString(''));
     }
 
     /**
-     * 测试获取所有可选项功能
+     * 测试获取所有可选项功能.
      */
     public function testGetOptions(): void
     {
@@ -74,7 +57,7 @@ class TimeWindowStrategyTest extends TestCase
         $this->assertArrayHasKey('week', $options);
         $this->assertArrayHasKey('month', $options);
         $this->assertArrayHasKey('all', $options);
-        
+
         $this->assertSame('按天', $options['day']);
         $this->assertSame('按周', $options['week']);
         $this->assertSame('按月', $options['month']);
@@ -82,14 +65,28 @@ class TimeWindowStrategyTest extends TestCase
     }
 
     /**
-     * 测试枚举实现了所需的接口
+     * 测试toArray方法返回正确的数组格式.
      */
-    public function testEnumImplementsInterfaces(): void
+    public function testToArray(): void
     {
-        $reflection = new \ReflectionClass(TimeWindowStrategy::class);
-        
-        $this->assertTrue($reflection->implementsInterface(\Tourze\EnumExtra\Labelable::class));
-        $this->assertTrue($reflection->implementsInterface(\Tourze\EnumExtra\Itemable::class));
-        $this->assertTrue($reflection->implementsInterface(\Tourze\EnumExtra\Selectable::class));
+        $this->assertEquals(
+            ['value' => 'day', 'label' => '按天'],
+            TimeWindowStrategy::DAY->toArray()
+        );
+
+        $this->assertEquals(
+            ['value' => 'week', 'label' => '按周'],
+            TimeWindowStrategy::WEEK->toArray()
+        );
+
+        $this->assertEquals(
+            ['value' => 'month', 'label' => '按月'],
+            TimeWindowStrategy::MONTH->toArray()
+        );
+
+        $this->assertEquals(
+            ['value' => 'all', 'label' => '全部合并'],
+            TimeWindowStrategy::ALL->toArray()
+        );
     }
-} 
+}
