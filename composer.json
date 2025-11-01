@@ -26,9 +26,9 @@
     "tourze/credit-bundle": "0.0.*",
     "tourze/easy-admin-enum-field-bundle": "1.0.*",
     "tourze/easy-admin-menu-bundle": "1.0.*",
-    "tourze/enum-extra": "1.*",
+    "tourze/enum-extra": "1.0.*",
     "tourze/symfony-cron-job-bundle": "1.0.*",
-    "tourze/symfony-dependency-service-loader": "1.*"
+    "tourze/symfony-dependency-service-loader": "1.0.*"
   },
   "require-dev": {
     "doctrine/data-fixtures": "^2.0",
