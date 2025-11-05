@@ -23,7 +23,7 @@
     "symfony/property-access": "^7.3",
     "symfony/validator": "^7.3",
     "tourze/bundle-dependency": "1.*",
-    "tourze/credit-bundle": "0.0.*",
+    "tourze/credit-bundle": "1.0.*",
     "tourze/easy-admin-enum-field-bundle": "1.0.*",
     "tourze/easy-admin-menu-bundle": "1.0.*",
     "tourze/enum-extra": "1.0.*",
