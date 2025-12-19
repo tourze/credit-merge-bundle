@@ -14,7 +14,6 @@ use Tourze\PHPUnitSymfonyUnitTest\AbstractDependencyInjectionExtensionTestCase;
 final class CreditMergeExtensionTest extends AbstractDependencyInjectionExtensionTestCase
 {
     // DependencyInjection Extension 不是服务，可以直接实例化
-    // @phpstan-ignore integrationTest.noDirectInstantiationOfCoveredClass
 
     private CreditMergeExtension $extension;
 

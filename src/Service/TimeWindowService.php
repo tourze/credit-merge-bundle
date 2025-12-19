@@ -8,7 +8,7 @@ use CreditMergeBundle\Enum\TimeWindowStrategy;
  * 时间窗口服务
  * 用于处理时间窗口相关的通用逻辑.
  */
-class TimeWindowService
+final class TimeWindowService
 {
     /**
      * 根据过期时间和策略生成时间窗口键.

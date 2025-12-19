@@ -12,7 +12,7 @@ use CreditMergeBundle\Model\SmallAmountStats;
  * 小额积分统计分析服务
  * 负责处理小额积分基础统计和分组逻辑.
  */
-class SmallAmountAnalysisService
+final class SmallAmountAnalysisService
 {
     public function __construct(
         private TransactionRepository $transactionRepository,

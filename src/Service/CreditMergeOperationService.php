@@ -16,7 +16,7 @@ use Psr\Log\LoggerInterface;
  * 负责执行小额积分的合并操作.
  */
 #[WithMonologChannel(channel: 'credit_merge')]
-class CreditMergeOperationService
+final class CreditMergeOperationService
 {
     public function __construct(
         private EntityManagerInterface $entityManager,

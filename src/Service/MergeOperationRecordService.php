@@ -20,7 +20,7 @@ use Psr\Log\LoggerInterface;
  * 负责记录合并操作的历史和统计数据.
  */
 #[WithMonologChannel(channel: 'credit_merge_record')]
-class MergeOperationRecordService
+final class MergeOperationRecordService
 {
     public function __construct(
         private EntityManagerInterface $entityManager,

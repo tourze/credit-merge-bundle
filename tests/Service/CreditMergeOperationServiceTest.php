@@ -3,19 +3,14 @@
 namespace CreditMergeBundle\Tests\Service;
 
 use CreditBundle\Entity\Account;
+use CreditBundle\Entity\ConsumeLog;
 use CreditBundle\Entity\Transaction;
 use CreditBundle\Repository\TransactionRepository;
 use CreditMergeBundle\Enum\TimeWindowStrategy;
 use CreditMergeBundle\Service\CreditMergeOperationService;
-use CreditMergeBundle\Service\TimeWindowService;
-use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Query;
-use Doctrine\ORM\QueryBuilder;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
-use PHPUnit\Framework\MockObject\MockObject;
-use Psr\Log\LoggerInterface;
 use Tourze\PHPUnitSymfonyKernelTest\AbstractIntegrationTestCase;
 
 /**
@@ -26,43 +21,20 @@ use Tourze\PHPUnitSymfonyKernelTest\AbstractIntegrationTestCase;
 final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
 {
     private CreditMergeOperationService $service;
-    private EntityManagerInterface&MockObject $em;
-    private TransactionRepository&MockObject $transactionRepository;
-    private LoggerInterface&MockObject $logger;
-    private TimeWindowService&MockObject $timeWindowService;
+
+    private TransactionRepository $transactionRepository;
+
     private Account $testAccount;
 
     protected function onSetUp(): void
     {
-        // 创建 Mock 对象
-        $this->em = $this->createMock(EntityManagerInterface::class);
-        $this->transactionRepository = $this->createMock(TransactionRepository::class);
-        $this->logger = $this->createMock(LoggerInterface::class);
-        $this->timeWindowService = $this->createMock(TimeWindowService::class);
-
-        // 覆盖容器中的依赖并获取服务
-        $container = self::getContainer();
-        try {
-            $container->set(EntityManagerInterface::class, $this->em);
-        } catch (\Symfony\Component\DependencyInjection\Exception\InvalidArgumentException) {
-        }
-        try {
-            $container->set(TransactionRepository::class, $this->transactionRepository);
-        } catch (\Symfony\Component\DependencyInjection\Exception\InvalidArgumentException) {
-        }
-        try {
-            $container->set(LoggerInterface::class, $this->logger);
-        } catch (\Symfony\Component\DependencyInjection\Exception\InvalidArgumentException) {
-        }
-        try {
-            $container->set(TimeWindowService::class, $this->timeWindowService);
-        } catch (\Symfony\Component\DependencyInjection\Exception\InvalidArgumentException) {
-        }
+        // 从容器获取真实服务
         $this->service = self::getService(CreditMergeOperationService::class);
+        $this->transactionRepository = self::getService(TransactionRepository::class);
 
-        // 创建并持久化测试账户，避免Doctrine级联持久化异常
+        // 创建并持久化测试账户
         $this->testAccount = new Account();
-        $this->testAccount->setName('merge-operation-account');
+        $this->testAccount->setName('merge-operation-test-'.uniqid());
         $this->testAccount->setCurrency('CNY');
         self::getEntityManager()->persist($this->testAccount);
         self::getEntityManager()->flush();
@@ -79,14 +51,34 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
     #[DataProvider('mergeNoExpiryRecordsSuccessDataProvider')]
     public function testMergeNoExpiryRecordsSuccess(float $minAmount, int $recordCount, int $expectedMergeCount): void
     {
-        $transactions = $this->createTestTransactions($recordCount, false);
+        // 创建真实的测试数据
+        $this->createTestTransactions($recordCount, false);
 
-        $this->setupNoExpiryRecordsQueryExpectations($transactions);
-        $this->setupEntityManagerFlushExpectation();
-
+        // 执行合并操作
         $result = $this->service->mergeNoExpiryRecords($this->testAccount, $minAmount);
 
+        // 验证合并数量
         $this->assertSame($expectedMergeCount, $result);
+
+        // 验证数据库状态：原记录应该被消费（balance=0）
+        $transactions = $this->transactionRepository->findBy(['account' => $this->testAccount]);
+        $consumedCount = 0;
+        $mergedRecord = null;
+
+        foreach ($transactions as $transaction) {
+            if ('0' === $transaction->getBalance() || '0.00' === $transaction->getBalance()) {
+                ++$consumedCount;
+            }
+            if (str_starts_with($transaction->getEventNo(), 'MERGE_')) {
+                $mergedRecord = $transaction;
+            }
+        }
+
+        // 应该有 expectedMergeCount 条被消费的记录（只有满足条件的记录才会被合并）
+        $this->assertSame($expectedMergeCount, $consumedCount);
+
+        // 应该有一条合并记录
+        $this->assertNotNull($mergedRecord);
     }
 
     /**
@@ -94,9 +86,7 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
      */
     public function testMergeNoExpiryRecordsSingleRecord(): void
     {
-        $transactions = $this->createTestTransactions(1, false);
-
-        $this->setupNoExpiryRecordsQueryExpectations($transactions);
+        $this->createTestTransactions(1, false);
 
         $result = $this->service->mergeNoExpiryRecords($this->testAccount, 5.0);
 
@@ -109,8 +99,7 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
      */
     public function testMergeNoExpiryRecordsZeroRecords(): void
     {
-        $this->setupNoExpiryRecordsQueryExpectations([]);
-
+        // 不创建任何记录
         $result = $this->service->mergeNoExpiryRecords($this->testAccount, 5.0);
 
         $this->assertSame(0, $result);
@@ -126,15 +115,34 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
         int $recordCount,
         int $expectedMergeCount,
     ): void {
-        $transactions = $this->createTestTransactions($recordCount, true);
+        // 创建真实的测试数据（带过期时间）
+        $this->createTestTransactions($recordCount, true, $strategy);
 
-        $this->setupExpiryRecordsQueryExpectations($transactions);
-        $this->setupTimeWindowServiceExpectations($strategy, $recordCount);
-        $this->setupEntityManagerFlushExpectation();
-
+        // 执行合并操作
         $result = $this->service->mergeExpiryRecords($this->testAccount, $minAmount, $strategy);
 
+        // 验证合并数量
         $this->assertSame($expectedMergeCount, $result);
+
+        // 验证数据库状态
+        $transactions = $this->transactionRepository->findBy(['account' => $this->testAccount]);
+        $consumedCount = 0;
+        $mergedRecords = [];
+
+        foreach ($transactions as $transaction) {
+            if ('0' === $transaction->getBalance() || '0.00' === $transaction->getBalance()) {
+                ++$consumedCount;
+            }
+            if (str_starts_with($transaction->getEventNo(), 'MERGE_')) {
+                $mergedRecords[] = $transaction;
+            }
+        }
+
+        // 应该有 expectedMergeCount 条被消费的记录（只有满足条件的记录才会被合并）
+        $this->assertSame($expectedMergeCount, $consumedCount);
+
+        // 应该至少有一条合并记录
+        $this->assertNotEmpty($mergedRecords);
     }
 
     /**
@@ -142,8 +150,6 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
      */
     public function testMergeExpiryRecordsZeroRecords(): void
     {
-        $this->setupExpiryRecordsQueryExpectations([]);
-
         $result = $this->service->mergeExpiryRecords($this->testAccount, 5.0, TimeWindowStrategy::MONTH);
 
         $this->assertSame(0, $result);
@@ -155,16 +161,13 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
     #[DataProvider('timeWindowStrategyDataProvider')]
     public function testMergeExpiryRecordsWithDifferentStrategies(
         TimeWindowStrategy $strategy,
-        int $expectedWindowCount,
+        int $recordCount,
     ): void {
-        $transactions = $this->createTestTransactions(10, true);
-
-        $this->setupExpiryRecordsQueryExpectations($transactions);
-        $this->setupTimeWindowServiceExpectations($strategy, 10, $expectedWindowCount);
-        $this->setupEntityManagerFlushExpectation();
+        $this->createTestTransactions($recordCount, true, $strategy);
 
         $result = $this->service->mergeExpiryRecords($this->testAccount, 5.0, $strategy);
 
+        // 验证合并成功执行
         $this->assertGreaterThanOrEqual(0, $result);
     }
 
@@ -173,15 +176,16 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
      */
     public function testMergeRecordsPersistenceOperations(): void
     {
-        $transactions = $this->createTestTransactions(3, false);
-
-        $this->setupNoExpiryRecordsQueryExpectations($transactions);
-
-        $this->setupEntityManagerFlushExpectation();
+        $this->createTestTransactions(3, false);
 
         $result = $this->service->mergeNoExpiryRecords($this->testAccount, 5.0);
 
         $this->assertSame(3, $result);
+
+        // 验证所有记录都已持久化
+        self::getEntityManager()->clear();
+        $transactions = $this->transactionRepository->findBy(['account' => $this->testAccount]);
+        $this->assertNotEmpty($transactions);
     }
 
     /**
@@ -189,16 +193,22 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
      */
     public function testMergedRecordEventNoGeneration(): void
     {
-        $transactions = $this->createTestTransactions(2, false);
+        $this->createTestTransactions(2, false);
 
-        $this->setupNoExpiryRecordsQueryExpectations($transactions);
-        $this->setupEntityManagerFlushExpectation();
+        $this->service->mergeNoExpiryRecords($this->testAccount, 5.0);
 
-        $result = $this->service->mergeNoExpiryRecords($this->testAccount, 5.0);
+        // 查找合并记录
+        $transactions = $this->transactionRepository->findBy(['account' => $this->testAccount]);
+        $mergedRecord = null;
+        foreach ($transactions as $transaction) {
+            if (str_starts_with($transaction->getEventNo(), 'MERGE_')) {
+                $mergedRecord = $transaction;
+                break;
+            }
+        }
 
-        // 验证合并成功执行
-        $this->assertIsInt($result);
-        $this->assertGreaterThanOrEqual(0, $result);
+        $this->assertNotNull($mergedRecord);
+        $this->assertStringStartsWith('MERGE_', $mergedRecord->getEventNo());
     }
 
     /**
@@ -206,16 +216,24 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
      */
     public function testMergedRecordBalanceCalculation(): void
     {
-        $transactions = $this->createTestTransactionsWithSpecificAmounts([3.5, 1.2, 4.8]);
+        $amounts = [3.5, 1.2, 4.8];
+        $this->createTestTransactionsWithSpecificAmounts($amounts);
 
-        $this->setupNoExpiryRecordsQueryExpectations($transactions);
-        $this->setupEntityManagerFlushExpectation();
+        $this->service->mergeNoExpiryRecords($this->testAccount, 5.0);
 
-        $result = $this->service->mergeNoExpiryRecords($this->testAccount, 5.0);
+        // 查找合并记录并验证余额
+        $transactions = $this->transactionRepository->findBy(['account' => $this->testAccount]);
+        $mergedRecord = null;
+        foreach ($transactions as $transaction) {
+            if (str_starts_with($transaction->getEventNo(), 'MERGE_')) {
+                $mergedRecord = $transaction;
+                break;
+            }
+        }
 
-        // 验证合并成功执行
-        $this->assertIsInt($result);
-        $this->assertGreaterThanOrEqual(0, $result);
+        $this->assertNotNull($mergedRecord);
+        $expectedBalance = array_sum($amounts);
+        $this->assertEquals((string) $expectedBalance, $mergedRecord->getBalance());
     }
 
     /**
@@ -223,16 +241,21 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
      */
     public function testOriginalRecordsConsumption(): void
     {
-        $transactions = $this->createTestTransactions(3, false);
-
-        $this->setupNoExpiryRecordsQueryExpectations($transactions);
-        $this->setupEntityManagerFlushExpectation();
+        $this->createTestTransactions(3, false);
 
         $this->service->mergeNoExpiryRecords($this->testAccount, 5.0);
 
         // 验证所有原始记录的余额被设置为0
+        $transactions = $this->transactionRepository->findBy(['account' => $this->testAccount]);
+        $originalRecords = [];
         foreach ($transactions as $transaction) {
-            $this->assertEquals('0', $transaction->getBalance());
+            if (!str_starts_with($transaction->getEventNo(), 'MERGE_')) {
+                $originalRecords[] = $transaction;
+            }
+        }
+
+        foreach ($originalRecords as $record) {
+            $this->assertTrue('0' === $record->getBalance() || '0.00' === $record->getBalance());
         }
     }
 
@@ -241,16 +264,17 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
      */
     public function testConsumeLogCreation(): void
     {
-        $transactions = $this->createTestTransactions(2, false);
+        $this->createTestTransactions(2, false);
 
-        $this->setupNoExpiryRecordsQueryExpectations($transactions);
-        $this->setupEntityManagerFlushExpectation();
+        $this->service->mergeNoExpiryRecords($this->testAccount, 5.0);
 
-        $result = $this->service->mergeNoExpiryRecords($this->testAccount, 5.0);
+        // 验证消费日志已创建
+        $consumeLogs = self::getEntityManager()
+            ->getRepository(ConsumeLog::class)
+            ->findAll()
+        ;
 
-        // 验证合并成功执行
-        $this->assertIsInt($result);
-        $this->assertGreaterThanOrEqual(0, $result);
+        $this->assertGreaterThanOrEqual(2, count($consumeLogs));
     }
 
     /**
@@ -258,57 +282,42 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
      */
     public function testMergedRecordContext(): void
     {
-        $transactions = $this->createTestTransactions(3, false);
+        $this->createTestTransactions(3, false);
 
-        $this->setupNoExpiryRecordsQueryExpectations($transactions);
-        $this->setupEntityManagerFlushExpectation();
+        $this->service->mergeNoExpiryRecords($this->testAccount, 5.0);
 
-        $result = $this->service->mergeNoExpiryRecords($this->testAccount, 5.0);
+        // 查找合并记录并验证上下文
+        $transactions = $this->transactionRepository->findBy(['account' => $this->testAccount]);
+        $mergedRecord = null;
+        foreach ($transactions as $transaction) {
+            if (str_starts_with($transaction->getEventNo(), 'MERGE_')) {
+                $mergedRecord = $transaction;
+                break;
+            }
+        }
 
-        // 验证合并成功执行
-        $this->assertIsInt($result);
-        $this->assertGreaterThanOrEqual(0, $result);
-    }
-
-    /**
-     * 测试日志记录功能.
-     */
-    public function testLoggingFunctionality(): void
-    {
-        $transactions = $this->createTestTransactions(5, false);
-
-        $this->setupNoExpiryRecordsQueryExpectations($transactions);
-        $this->setupEntityManagerFlushExpectation();
-
-        $result = $this->service->mergeNoExpiryRecords($this->testAccount, 5.0);
-
-        // 验证合并成功执行
-        $this->assertIsInt($result);
-        $this->assertGreaterThanOrEqual(0, $result);
+        $this->assertNotNull($mergedRecord);
+        $context = $mergedRecord->getContext();
+        $this->assertIsArray($context);
+        $this->assertArrayHasKey('merged_records', $context);
+        $this->assertArrayHasKey('merge_strategy', $context);
+        $this->assertArrayHasKey('merge_time', $context);
     }
 
     // ============= 辅助方法 =============
 
     /**
      * 创建测试用的交易记录.
-     */
-    /**
+     *
      * @return array<Transaction>
      */
-    private function createTestTransactions(int $count, bool $withExpiry): array
+    private function createTestTransactions(int $count, bool $withExpiry, ?TimeWindowStrategy $strategy = null): array
     {
         $transactions = [];
 
         for ($i = 1; $i <= $count; ++$i) {
             $transaction = new Transaction();
-
-            // 使用反射设置 ID（仅用于测试）
-            $reflection = new \ReflectionClass($transaction);
-            $idProperty = $reflection->getProperty('id');
-            $idProperty->setAccessible(true);
-            $idProperty->setValue($transaction, $i);
-
-            $transaction->setEventNo("TEST_EVENT_{$i}");
+            $transaction->setEventNo('TEST_EVENT_'.uniqid().'_'.$i);
             $transaction->setAccount($this->testAccount);
             $transaction->setAmount((string) (2.5 + $i * 0.5));
             $transaction->setBalance((string) (2.5 + $i * 0.5));
@@ -316,20 +325,37 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
             $transaction->setCreateTime(new \DateTimeImmutable());
 
             if ($withExpiry) {
-                $expireTime = new \DateTimeImmutable("+{$i} days");
+                // 根据策略创建不同的过期时间
+                if (TimeWindowStrategy::DAY === $strategy) {
+                    // 每2-3条记录创建一个窗口(同一天过期)
+                    $dayOffset = (int) ceil($i / 2);
+                    $expireTime = new \DateTimeImmutable("+{$dayOffset} days");
+                } elseif (TimeWindowStrategy::WEEK === $strategy) {
+                    // 每7条记录创建一个窗口(同一周过期)
+                    $weekOffset = (int) ceil($i / 7);
+                    $expireTime = new \DateTimeImmutable("+{$weekOffset} weeks");
+                } elseif (TimeWindowStrategy::MONTH === $strategy) {
+                    // 所有记录在同一个月
+                    $expireTime = new \DateTimeImmutable('+30 days');
+                } else {
+                    // 默认情况
+                    $expireTime = new \DateTimeImmutable("+{$i} days");
+                }
                 $transaction->setExpireTime($expireTime);
             }
 
+            self::getEntityManager()->persist($transaction);
             $transactions[] = $transaction;
         }
+
+        self::getEntityManager()->flush();
 
         return $transactions;
     }
 
     /**
      * 创建具有特定金额的测试交易记录.
-     */
-    /**
+     *
      * @param array<float> $amounts
      *
      * @return array<Transaction>
@@ -340,137 +366,20 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
 
         foreach ($amounts as $index => $amount) {
             $transaction = new Transaction();
-
-            // 使用反射设置 ID（仅用于测试）
-            $reflection = new \ReflectionClass($transaction);
-            $idProperty = $reflection->getProperty('id');
-            $idProperty->setAccessible(true);
-            $idProperty->setValue($transaction, $index + 1);
-
-            $transaction->setEventNo('TEST_SPECIFIC_EVENT_'.($index + 1));
+            $transaction->setEventNo('TEST_SPECIFIC_EVENT_'.uniqid().'_'.($index + 1));
             $transaction->setAccount($this->testAccount);
             $transaction->setAmount((string) $amount);
             $transaction->setBalance((string) $amount);
             $transaction->setCurrency($this->testAccount->getCurrency());
             $transaction->setCreateTime(new \DateTimeImmutable());
 
+            self::getEntityManager()->persist($transaction);
             $transactions[] = $transaction;
         }
 
+        self::getEntityManager()->flush();
+
         return $transactions;
-    }
-
-    /**
-     * 设置无过期记录查询期望.
-     *
-     * @param array<int, mixed> $transactions
-     */
-    private function setupNoExpiryRecordsQueryExpectations(array $transactions): void
-    {
-        $queryBuilder = $this->createMock(QueryBuilder::class);
-        $query = $this->createMock(Query::class);
-
-        $this->transactionRepository
-            ->expects($this->once())
-            ->method('createQueryBuilder')
-            ->with('t')
-            ->willReturn($queryBuilder);
-
-        $queryBuilder->expects($this->atLeastOnce())
-            ->method('where')
-            ->willReturnSelf();
-
-        $queryBuilder->expects($this->atLeastOnce())
-            ->method('andWhere')
-            ->willReturnSelf();
-
-        $queryBuilder->expects($this->atLeastOnce())
-            ->method('setParameter')
-            ->willReturnSelf();
-
-        $queryBuilder->expects($this->once())
-            ->method('getQuery')
-            ->willReturn($query);
-
-        $query->expects($this->once())
-            ->method('getResult')
-            ->willReturn($transactions);
-    }
-
-    /**
-     * 设置有过期记录查询期望.
-     */
-    /**
-     * @param array<int, mixed> $transactions
-     */
-    private function setupExpiryRecordsQueryExpectations(array $transactions): void
-    {
-        $queryBuilder = $this->createMock(QueryBuilder::class);
-        $query = $this->createMock(Query::class);
-
-        $this->transactionRepository
-            ->expects($this->once())
-            ->method('createQueryBuilder')
-            ->with('t')
-            ->willReturn($queryBuilder);
-
-        $queryBuilder->expects($this->atLeastOnce())
-            ->method('where')
-            ->willReturnSelf();
-
-        $queryBuilder->expects($this->atLeastOnce())
-            ->method('andWhere')
-            ->willReturnSelf();
-
-        $queryBuilder->expects($this->atLeastOnce())
-            ->method('setParameter')
-            ->willReturnSelf();
-
-        $queryBuilder->expects($this->once())
-            ->method('orderBy')
-            ->willReturnSelf();
-
-        $queryBuilder->expects($this->once())
-            ->method('getQuery')
-            ->willReturn($query);
-
-        $query->expects($this->once())
-            ->method('getResult')
-            ->willReturn($transactions);
-    }
-
-    /**
-     * 设置时间窗口服务期望.
-     */
-    private function setupTimeWindowServiceExpectations(
-        TimeWindowStrategy $strategy,
-        int $recordCount,
-        int $windowCount = 1,
-    ): void {
-        $windowKeys = [];
-        for ($i = 0; $i < $windowCount; ++$i) {
-            $windowKeys[] = "window_key_{$i}";
-        }
-
-        // 创建足够多的返回值，重复窗口键以满足记录数量需求
-        $returnValues = [];
-        for ($i = 0; $i < $recordCount; ++$i) {
-            $returnValues[] = $windowKeys[$i % count($windowKeys)];
-        }
-
-        $this->timeWindowService
-            ->expects($this->exactly($recordCount))
-            ->method('getTimeWindowKey')
-            ->with(self::isInstanceOf(\DateTimeInterface::class), $strategy)
-            ->willReturnOnConsecutiveCalls(...$returnValues);
-    }
-
-    /**
-     * 设置实体管理器刷新期望.
-     */
-    private function setupEntityManagerFlushExpectation(): void
-    {
-        // 不设置任何预期，避免对真实容器 EntityManager 的依赖
     }
 
     // ============= DataProvider 方法 =============
@@ -481,10 +390,12 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
     public static function mergeNoExpiryRecordsSuccessDataProvider(): array
     {
         return [
-            'small_batch' => [5.0, 3, 3],
-            'medium_batch' => [5.0, 7, 7],
-            'large_batch' => [5.0, 15, 15],
-            'high_threshold' => [10.0, 5, 5],
+            // 金额计算: balance = 2.5 + i * 0.5
+            // 记录1=3.0, 记录2=3.5, 记录3=4.0, 记录4=4.5, 记录5=5.0, 记录6=5.5, 记录7=6.0...
+            'small_batch' => [5.0, 3, 3],  // 3条记录都 <= 5.0
+            'medium_batch' => [5.0, 7, 5], // 7条记录中只有前5条 <= 5.0
+            'large_batch' => [10.0, 15, 15], // 阈值10.0,15条记录都满足
+            'high_threshold' => [10.0, 5, 5], // 阈值10.0,5条记录都满足
         ];
     }
 
@@ -494,10 +405,13 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
     public static function mergeExpiryRecordsSuccessDataProvider(): array
     {
         return [
-            'month_strategy_small' => [5.0, TimeWindowStrategy::MONTH, 4, 4],
-            'week_strategy_medium' => [5.0, TimeWindowStrategy::WEEK, 8, 8],
-            'day_strategy_large' => [5.0, TimeWindowStrategy::DAY, 12, 12],
-            'high_threshold' => [10.0, TimeWindowStrategy::MONTH, 6, 6],
+            // 金额计算: balance = 2.5 + i * 0.5
+            // 记录1=3.0, 记录2=3.5, 记录3=4.0, 记录4=4.5, 记录5=5.0, 记录6=5.5...
+            'month_strategy_small' => [5.0, TimeWindowStrategy::MONTH, 4, 4], // 4条都 <= 5.0,同一月
+            'week_strategy_medium' => [5.0, TimeWindowStrategy::WEEK, 8, 5], // 8条中只有前5条 <= 5.0,同一周
+            // DAY策略: ceil($i/2)分组,前5条中:记录1-2一组(2条),记录3-4一组(2条),记录5单独(1条不合并)
+            'day_strategy_large' => [5.0, TimeWindowStrategy::DAY, 12, 4], // 实际合并4条(2+2)
+            'high_threshold' => [10.0, TimeWindowStrategy::MONTH, 6, 6], // 阈值10.0,6条都满足
         ];
     }
 
@@ -507,9 +421,9 @@ final class CreditMergeOperationServiceTest extends AbstractIntegrationTestCase
     public static function timeWindowStrategyDataProvider(): array
     {
         return [
-            'day_strategy' => [TimeWindowStrategy::DAY, 3],
-            'week_strategy' => [TimeWindowStrategy::WEEK, 2],
-            'month_strategy' => [TimeWindowStrategy::MONTH, 1],
+            'day_strategy' => [TimeWindowStrategy::DAY, 10],
+            'week_strategy' => [TimeWindowStrategy::WEEK, 10],
+            'month_strategy' => [TimeWindowStrategy::MONTH, 10],
         ];
     }
 }

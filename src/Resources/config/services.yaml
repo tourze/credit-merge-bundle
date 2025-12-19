@@ -3,18 +3,15 @@ services:
   _defaults:
     autowire: true      # Automatically injects dependencies in your services.
     autoconfigure: true # Automatically registers your services as commands, event subscribers, etc.
+    public: false
 
+  CreditMergeBundle\Controller\:
+    resource: '../../Controller/'
+    tags: ['controller.service_arguments']
   CreditMergeBundle\Command\:
     resource: '../../Command/'
   CreditMergeBundle\Service\:
     resource: '../../Service/'
-  CreditMergeBundle\Controller\:
-    resource: '../../Controller/'
-    tags: ['controller.service_arguments']
+    public: true
   CreditMergeBundle\Repository\:
     resource: '../../Repository/'
-    
-  # 明确注册新服务以确保正确的依赖注入
-  CreditMergeBundle\Service\MergeOperationRecordService:
-    arguments:
-      $logger: '@monolog.logger.credit_merge_record'

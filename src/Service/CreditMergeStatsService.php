@@ -10,7 +10,7 @@ use CreditMergeBundle\Model\SmallAmountStats;
  * 积分合并统计服务
  * 负责协调小额积分统计分析和合并潜力分析的服务
  */
-class CreditMergeStatsService
+final class CreditMergeStatsService
 {
     public function __construct(
         private SmallAmountAnalysisService $smallAmountAnalysisService,

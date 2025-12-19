@@ -6,7 +6,7 @@ namespace CreditMergeBundle\Service;
  * 积分合并潜力分析服务
  * 负责分析小额积分的合并潜力和推荐合并策略.
  */
-class MergePotentialAnalysisService
+final class MergePotentialAnalysisService
 {
     /**
      * 为分组数据添加合并潜力统计.

@@ -12,7 +12,7 @@ use Psr\Log\LoggerInterface;
  * 负责处理扣减积分前的小额积分合并逻辑.
  */
 #[WithMonologChannel(channel: 'credit_merge')]
-class CreditSmallAmountsMergeService
+final class CreditSmallAmountsMergeService
 {
     public function __construct(
         private TransactionRepository $transactionRepository,

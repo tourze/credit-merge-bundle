@@ -21,7 +21,7 @@ final class MergeSmallAmountsCommandTest extends AbstractCommandTestCase
         $command = self::getContainer()->get(MergeSmallAmountsCommand::class);
         self::assertInstanceOf(MergeSmallAmountsCommand::class, $command);
         $application = new Application();
-        $application->add($command);
+        $application->addCommand($command);
         $command = $application->find('credit:merge-small-amounts');
 
         return new CommandTester($command);

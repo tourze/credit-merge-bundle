@@ -28,7 +28,7 @@ use Tourze\Symfony\CronJob\Attribute\AsCronTask;
 )]
 #[AsCronTask(expression: '0 2 * * *')] // 每天凌晨2点执行
 #[WithMonologChannel(channel: 'credit_merge')]
-class MergeSmallAmountsCommand extends Command
+final class MergeSmallAmountsCommand extends Command
 {
     /**
      * 命令名称常量.

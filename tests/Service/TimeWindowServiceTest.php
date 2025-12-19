@@ -95,7 +95,7 @@ final class TimeWindowServiceTest extends AbstractIntegrationTestCase
     public function testGetTimeWindowKeyWithInvalidType(): void
     {
         $this->expectException(\TypeError::class);
-        /* @phpstan-ignore-next-line */
+
         $this->service->getTimeWindowKey('invalid-date', TimeWindowStrategy::DAY);
     }
 }

@@ -18,7 +18,7 @@ use Tourze\PHPUnitSymfonyKernelTest\Attribute\AsRepository;
  * @extends ServiceEntityRepository<MergeStatistics>
  */
 #[AsRepository(entityClass: MergeStatistics::class)]
-class MergeStatisticsRepository extends ServiceEntityRepository
+final class MergeStatisticsRepository extends ServiceEntityRepository
 {
     public function __construct(ManagerRegistry $registry)
     {
